@@ -19,6 +19,7 @@
   "license": "ISC",
   "dependencies": {
     "abort-controller": "^3.0.0",
+    "log4js": "^6.3.0",
     "node-fetch": "^2.6.1"
   }
 }
