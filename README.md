@@ -22,7 +22,7 @@ const ts = new TwitterStreams(bearerToken, url, configuration);
 (async () => {
   await ts.createRules('googledown');
   const stream = await ts.createConnection();
-  ts.processStream(stream, async () => {
+  ts.processStream(stream, async (tweet) => {
     // your tweet processing logic here
   });
 })();

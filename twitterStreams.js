@@ -1,6 +1,7 @@
 const stream = require('stream');
 const fetch = require('node-fetch');
 const AbortController = require('abort-controller');
+const log4js = require('log4js');
 const { ConfigurationError } = require('./Error');
 
 class TwitterStreams {
@@ -14,7 +15,7 @@ class TwitterStreams {
     this._url = url;
 
     // Config
-    this._timeout = config.timeout || this.constructor.__defaultTimeout;
+    this._timeout = config.timeout || this.constructor.__defaultTimeout();
     if (config.retry) {
       this._retry = true;
       this._base = config.retry.base || this.constructor.__defaultBase;
@@ -22,6 +23,9 @@ class TwitterStreams {
       this._customBackoff = config.retry.customBackoff
         || this.constructor.__defaultBackoffAlgorithm;
     }
+    const logLevel = this.__getLogLevel();
+    this._logger = log4js.getLogger();
+    this._logger.level = logLevel;
   }
 
   static __validateRequired(bearerToken, url) {
@@ -135,6 +139,26 @@ class TwitterStreams {
     };
   }
 
+  get logger() {
+    return this._logger;
+  }
+
+  static __defaultLevel() {
+    return 'info';
+  }
+
+  __getLogLevel(level) {
+    const validLevels = [
+      'trace',
+      'debug',
+      'info',
+      'warn',
+      'error',
+      'fatal',
+    ];
+    return validLevels.includes(level) ? level : this.constructor.__defaultLevel();
+  }
+
   __startTimeout() {
     this.__connectionTimeout = setTimeout(() => {
       this.abortController.abort();
@@ -171,6 +195,7 @@ class TwitterStreams {
   }
 
   async createConnection() {
+    this.logger.info('Creating connection with Twitter stream...');
     const twitterStream = this.constructor.__createStream();
     this.refreshAbortController();
     const response = await fetch(this.url, this.connectionOptions);
@@ -179,6 +204,7 @@ class TwitterStreams {
   }
 
   processStream(twitterStream, cb) {
+    this.logger.info('Listening to Twitter stream...');
     // on data
     twitterStream.on('data', async (rawData) => {
       this.__clearTimeout();
@@ -187,38 +213,35 @@ class TwitterStreams {
       try {
         data = Buffer.from(rawData).toString();
       } catch (error) {
-        console.error({
+        this.logger.warn('Data received is not a buffer.');
+        this.logger.debug({
           code: '500',
           title: 'REQUEST_ERROR',
           message: 'Data is not a buffer',
           data,
+          error,
         });
         twitterStream.emit('timeout');
       }
       const json = this.constructor.__isJSON(data);
       if (!json) {
         // Keep alive received
-        console.log({
-          code: '200',
-          data: 'KEEP_ALIVE',
-        });
         this.resetBackoff();
+        this.logger.info('Keep-Alive signal received. Keep listening...');
       } else if (json.title === 'ConnectionException') {
-        console.error({
+        this.logger.warn('Connection Exception: Too many connections.');
+        this.logger.debug({
           code: '429',
           title: 'CONNECTION_ERROR',
           message: 'Too Many Connections',
-          data: json,
+          error: json,
         });
         twitterStream.emit('timeout');
       } else {
         // Tweet received
         this.resetBackoff();
-        console.log({
-          code: '200',
-          data: 'TWEET',
-          message: data,
-        });
+        this.logger.info('Tweet received!');
+        this.logger.info(data);
         if (cb) {
           await cb(json);
         }
@@ -226,28 +249,34 @@ class TwitterStreams {
     });
 
     twitterStream.on('error', (error) => {
-      let logMessage;
+      let debugMessage;
       if (error.name === 'AbortError') {
-        logMessage = {
+        this.logger.warn(`Timeout Error: Timeout of ${this.timeout} ms has been exceeded.`);
+        debugMessage = {
           code: '408',
           title: 'TIMEOUT_ERROR',
-          message: `Timeout of ${this.timeout} has been exceeded`,
+          message: `Timeout of ${this.timeout} ms has been exceeded.`,
+          error,
         };
         clearTimeout(this.timeout);
         twitterStream.emit('timeout');
       } else {
-        logMessage = {
+        this.logger.fatal(error.message);
+        debugMessage = {
           code: '500',
           title: 'STREAM_ERROR',
-          message: error.message,
+          error,
         };
       }
-      console.error(logMessage);
+      this.logger.debug(debugMessage);
     });
 
     twitterStream.on('timeout', async () => {
       if (this.retry) {
+        this.logger.info('Connection Retry process started.');
+        this.logger.info(`Waiting backoff time of ${this.currentBackoff} ms...`);
         await this.constructor.__sleep(this.currentBackoff);
+        this.logger.info('Retrying connection...');
         const retryStream = await this.createConnection();
         this.increaseBackoff(this.customBackoff);
         await this.processStream(retryStream);
@@ -262,27 +291,23 @@ class TwitterStreams {
         { value: `#${hashtag} -is:quote -is:retweet -is:reply`, tag: `#${hashtag}` },
       ],
     };
-
     const body = JSON.stringify(jsonBody);
-
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.bearerToken}`,
     };
-
     const result = await fetch(URL, { method: 'POST', body, headers });
     const response = await result.json();
-    console.log(response);
+    this.logger.info(`Rules created for hashtag #${hashtag}.`);
+    this.logger.debug(response);
   }
 
   async getRules() {
     const URL = 'https://api.twitter.com/2/tweets/search/stream/rules';
-
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.bearerToken}`,
     };
-
     const result = await fetch(URL, { headers });
     const response = await result.json();
 
@@ -291,33 +316,30 @@ class TwitterStreams {
 
   async deleteRules(ids) {
     const URL = 'https://api.twitter.com/2/tweets/search/stream/rules';
-
     const jsonBody = {
       delete: {
         ids,
       },
     };
-
     const body = JSON.stringify(jsonBody);
-
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.bearerToken}`,
     };
-
     const result = await fetch(URL, { method: 'POST', body, headers });
     const response = await result.json();
-    console.log(response);
+    this.logger.info('Rules deleted.');
+    this.logger.debug(response);
   }
 
   async overwriteRules(hashtag) {
     const rules = await this.getRules();
-    console.log('Rules', rules);
+    this.logger.debug(`Rules to overwrite: ${rules}.`);
     try {
       const ids = rules.data.map((item) => item.id);
       await this.deleteRules(ids);
     } catch (error) {
-      console.log(error);
+      this.logger.fatal(error);
     }
     await this.createRules(hashtag);
   }
