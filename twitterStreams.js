@@ -24,7 +24,6 @@ class TwitterStreams {
         || this.constructor.__defaultBackoffAlgorithm;
     }
     const logLevel = this.__getLogLevel();
-    console.log('loglevel', logLevel);
     this._logger = log4js.getLogger();
     this._logger.level = logLevel;
   }
