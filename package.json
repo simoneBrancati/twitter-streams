@@ -1,0 +1,24 @@
+{
+  "name": "twitter-streams",
+  "version": "1.0.0",
+  "description": "Work with twitter streams.",
+  "devDependencies": {
+    "eslint": "^7.11.0",
+    "eslint-config-airbnb-base": "^14.2.0",
+    "eslint-plugin-import": "^2.22.1"
+  },
+  "main": "twitter.js",
+  "scripts": {
+    "test": "jest --coverage"
+  },
+  "keywords": [
+    "twitter",
+    "stream"
+  ],
+  "author": "Simone Brancati",
+  "license": "ISC",
+  "dependencies": {
+    "abort-controller": "^3.0.0",
+    "node-fetch": "^2.6.1"
+  }
+}
