@@ -15,7 +15,7 @@ class TwitterStreams {
     this._url = url;
 
     // Config
-    this._timeout = config.timeout || this.constructor.__defaultTimeout;
+    this._timeout = config.timeout || this.constructor.__defaultTimeout();
     if (config.retry) {
       this._retry = true;
       this._base = config.retry.base;
@@ -23,7 +23,8 @@ class TwitterStreams {
       this._customBackoff = config.retry.customBackoff
         || this.constructor.__defaultBackoffAlgorithm;
     }
-    const logLevel = config.logLevel || 'info'; // TODO sistema livelli
+    const logLevel = this.__getLogLevel();
+    console.log('loglevel', logLevel);
     this._logger = log4js.getLogger();
     this._logger.level = logLevel;
   }
@@ -137,6 +138,22 @@ class TwitterStreams {
 
   get logger() {
     return this._logger;
+  }
+
+  static __defaultLevel() {
+    return 'info';
+  }
+
+  __getLogLevel(level) {
+    const validLevels = [
+      'trace',
+      'debug',
+      'info',
+      'warn',
+      'error',
+      'fatal',
+    ];
+    return validLevels.includes(level) ? level : this.constructor.__defaultLevel();
   }
 
   __startTimeout() {
