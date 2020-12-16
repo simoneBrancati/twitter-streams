@@ -4,13 +4,14 @@ const AbortController = require('abort-controller');
 const { ConfigurationError } = require('./Error');
 
 class TwitterStreams {
-  constructor(bearerToken, config = {}) {
+  constructor(bearerToken, url, config = {}) {
     // Validation
-    this.constructor.__validateRequired(bearerToken);
+    this.constructor.__validateRequired(bearerToken, url);
     this.constructor.__validateConfig(config);
 
     // Required
     this._bearerToken = bearerToken;
+    this._url = url;
 
     // Config
     this._timeout = config.timeout || this.constructor.__defaultTimeout;
@@ -21,13 +22,14 @@ class TwitterStreams {
       this._customBackoff = config.retry.customBackoff
         || this.constructor.__defaultBackoffAlgorithm;
     }
-
-    this._abortController = new AbortController();
   }
 
-  static __validateRequired(bearerToken) {
+  static __validateRequired(bearerToken, url) {
     if (!bearerToken || typeof bearerToken !== 'string') {
       throw new ConfigurationError('bearer token');
+    }
+    if (!url || typeof url !== 'string') {
+      throw new ConfigurationError('url');
     }
   }
 
@@ -53,6 +55,14 @@ class TwitterStreams {
 
   set bearerToken(value) {
     this._bearerToken = value;
+  }
+
+  get url() {
+    return this._url;
+  }
+
+  set url(value) {
+    this._url = value;
   }
 
   get timeout() {
@@ -101,6 +111,10 @@ class TwitterStreams {
 
   get abortController() {
     return this._abortController;
+  }
+
+  refreshAbortController() {
+    this._abortController = new AbortController();
   }
 
   get headers() {
@@ -152,9 +166,10 @@ class TwitterStreams {
     }
   }
 
-  async createConnection(url) {
-    const response = await fetch(url, this.connectionOptions);
+  async createConnection() {
     const twitterStream = this.constructor.__createStream();
+    this.refreshAbortController();
+    const response = await fetch(this.url, this.connectionOptions);
     this.constructor.__streamPipe(response.body, twitterStream);
     return twitterStream;
   }
@@ -235,8 +250,6 @@ class TwitterStreams {
       }
     });
   }
-
-  // help
 
   async createRules(hashtag) {
     const URL = 'https://api.twitter.com/2/tweets/search/stream/rules';
