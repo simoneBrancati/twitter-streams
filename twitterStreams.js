@@ -17,7 +17,7 @@ class TwitterStreams {
     this._timeout = config.timeout || this.constructor.__defaultTimeout;
     if (config.retry) {
       this._retry = true;
-      this._base = config.retry.base;
+      this._base = config.retry.base || this.constructor.__defaultBase;
       this._currentBackoff = this._base;
       this._customBackoff = config.retry.customBackoff
         || this.constructor.__defaultBackoffAlgorithm;
@@ -83,6 +83,10 @@ class TwitterStreams {
 
   get base() {
     return this._base;
+  }
+
+  static __defaultBase() {
+    return 15000;
   }
 
   get currentBackoff() {
@@ -174,7 +178,7 @@ class TwitterStreams {
     return twitterStream;
   }
 
-  readStream(twitterStream, cb) {
+  processStream(twitterStream, cb) {
     // on data
     twitterStream.on('data', async (rawData) => {
       this.__clearTimeout();
@@ -246,7 +250,7 @@ class TwitterStreams {
         await this.constructor.__sleep(this.currentBackoff);
         const retryStream = await this.createConnection();
         this.increaseBackoff(this.customBackoff);
-        await this.readStream(retryStream);
+        await this.processStream(retryStream);
       }
     });
   }
